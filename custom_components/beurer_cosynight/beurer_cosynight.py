@@ -219,7 +219,7 @@ class BeurerCosyNight:
             _LOGGER.error("Authentication failed: %s %s for url: %s", r.status_code, r.reason, r.url)
             try:
                 _LOGGER.error("Response body: %s", r.text)
-            except:
+            except Exception:
                 pass
             raise self.AuthenticationError(
                 f"Authentication failed: {r.status_code} {r.reason} for url: {r.url}"
@@ -230,7 +230,7 @@ class BeurerCosyNight:
             _LOGGER.error("Request failed with status %s: %s", r.status_code, r.reason)
             try:
                 _LOGGER.error("Response body: %s", r.text)
-            except:
+            except Exception:
                 pass
         
         return r
@@ -249,7 +249,7 @@ class BeurerCosyNight:
             _LOGGER.error("Authentication failed: invalid username or password")
             try:
                 _LOGGER.error("Response body: %s", r.text)
-            except:
+            except Exception:
                 pass
             raise self.AuthenticationError(
                 "Authentication failed: invalid username or password"
