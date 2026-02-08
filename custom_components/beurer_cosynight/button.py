@@ -81,7 +81,7 @@ class StopButton(CoordinatorEntity, ButtonEntity):
                 bodySetting=0,
                 feetSetting=0,
                 id=status.id,
-                timer=0
+                timespan=0
             )
             
             # Send to device

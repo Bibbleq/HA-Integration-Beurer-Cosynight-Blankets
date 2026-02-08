@@ -86,8 +86,8 @@ class DurationTimer(CoordinatorEntity, NumberEntity):
         """Set the timer duration and apply it immediately to both zones."""
         self._attr_native_value = value
         
-        # Convert hours to minutes (API expects minutes)
-        timer_minutes = int(value * 60)
+        # Convert hours to seconds (API expects seconds)
+        timer_seconds = int(value * 3600)
         
         # Get current device status from coordinator
         status = self.coordinator.data.get(self._device.id)
@@ -102,14 +102,14 @@ class DurationTimer(CoordinatorEntity, NumberEntity):
                 device_id=self._device.id,
                 body_setting=status.bodySetting,
                 feet_setting=status.feetSetting,
-                timer=timer_minutes,
+                timespan=timer_seconds,
             )
             
             self._attr_available = True
             
             _LOGGER.info(
-                "Timer set to %.1f hours (%d minutes) and applied to device %s",
-                value, timer_minutes, self._device.name
+                "Timer set to %.1f hours (%d seconds) and applied to device %s",
+                value, timer_seconds, self._device.name
             )
         except Exception as e:
             _LOGGER.error("Failed to apply timer change: %s", e)
