@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 
-from . import beurer_cosynight
 from .const import DOMAIN
 
 from homeassistant.components.number import NumberEntity, NumberMode
@@ -97,19 +96,14 @@ class DurationTimer(CoordinatorEntity, NumberEntity):
             return
         
         try:
-            # Create quickstart command with current zone values and new timer
-            qs = beurer_cosynight.Quickstart(
-                bodySetting=status.bodySetting,
-                feetSetting=status.feetSetting,
-                id=status.id,
-                timespan=timespan
+            # Use coordinator's batched update method for consistency
+            # This preserves current zone settings while updating the timer
+            await self.coordinator.async_set_zone(
+                device_id=self._device.id,
+                body_setting=status.bodySetting,
+                feet_setting=status.feetSetting,
+                timespan=timespan,
             )
-            
-            # Send the quickstart command
-            await self._hass.async_add_executor_job(self.coordinator.hub.quickstart, qs)
-            
-            # Notify coordinator that a command was sent
-            self.coordinator.notify_command_sent()
             
             self._attr_available = True
             
