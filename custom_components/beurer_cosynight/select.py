@@ -156,19 +156,12 @@ class BodyZone(_Zone):
         timer_hours = self._get_timer_value()
         timespan = int(timer_hours * 3600)  # Convert hours to seconds
         
-        qs = beurer_cosynight.Quickstart(
-            bodySetting=int(option),
-            feetSetting=status.feetSetting,
-            id=status.id,
-            timespan=timespan
+        # Use coordinator's batched update method to handle simultaneous zone updates
+        await self.coordinator.async_set_zone(
+            device_id=self._device.id,
+            body_setting=int(option),
+            timespan=timespan,
         )
-        try:
-            await self._hass.async_add_executor_job(self.coordinator.hub.quickstart, qs)
-            # Notify coordinator that a command was sent
-            self.coordinator.notify_command_sent()
-        except Exception as e:
-            _LOGGER.error("Failed to set body zone for %s: %s", self._device.name, e)
-            raise
 
 
 class FeetZone(_Zone):
@@ -193,16 +186,9 @@ class FeetZone(_Zone):
         timer_hours = self._get_timer_value()
         timespan = int(timer_hours * 3600)  # Convert hours to seconds
         
-        qs = beurer_cosynight.Quickstart(
-            bodySetting=status.bodySetting,
-            feetSetting=int(option),
-            id=status.id,
-            timespan=timespan
+        # Use coordinator's batched update method to handle simultaneous zone updates
+        await self.coordinator.async_set_zone(
+            device_id=self._device.id,
+            feet_setting=int(option),
+            timespan=timespan,
         )
-        try:
-            await self._hass.async_add_executor_job(self.coordinator.hub.quickstart, qs)
-            # Notify coordinator that a command was sent
-            self.coordinator.notify_command_sent()
-        except Exception as e:
-            _LOGGER.error("Failed to set feet zone for %s: %s", self._device.name, e)
-            raise

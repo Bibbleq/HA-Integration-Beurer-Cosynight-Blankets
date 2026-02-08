@@ -1,6 +1,7 @@
 """DataUpdateCoordinator for Beurer CosyNight integration."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import time, timedelta
 from typing import Any
@@ -22,8 +23,12 @@ from .const import (
     DEFAULT_PEAK_INTERVAL_MINUTES,
     DEFAULT_ACTIVE_BLANKET_ENABLED,
 )
+from . import beurer_cosynight
 
 _LOGGER = logging.getLogger(__name__)
+
+# Debounce delay to batch simultaneous zone updates (in seconds)
+DEBOUNCE_DELAY = 0.1
 
 
 class BeurerCoordinator(DataUpdateCoordinator):
@@ -44,6 +49,10 @@ class BeurerCoordinator(DataUpdateCoordinator):
         # Track when commands are sent to trigger aggressive polling
         self._last_command_time = None
         self._active_polling_enabled = False
+        
+        # Pending zone updates for batching (device_id -> {bodySetting, feetSetting, timespan})
+        self._pending_updates: dict[str, dict[str, Any]] = {}
+        self._debounce_tasks: dict[str, asyncio.Task] = {}
         
         # Get configuration options with defaults
         options = config_entry.options if config_entry.options else {}
@@ -202,3 +211,93 @@ class BeurerCoordinator(DataUpdateCoordinator):
         
         # Force an immediate update to get fresh status
         self.hass.async_create_task(self.async_request_refresh())
+
+    async def async_set_zone(
+        self,
+        device_id: str,
+        body_setting: int | None = None,
+        feet_setting: int | None = None,
+        timespan: int | None = None,
+    ) -> None:
+        """Set zone settings with batching to handle simultaneous updates.
+        
+        This method collects zone updates within a small time window and sends
+        them as a single atomic API call, preventing race conditions when both
+        zones are updated simultaneously.
+        
+        Args:
+            device_id: The device ID to update
+            body_setting: Optional body zone setting (0-9)
+            feet_setting: Optional feet zone setting (0-9)
+            timespan: Optional timer duration in seconds
+        """
+        # Initialize pending updates for this device if needed
+        if device_id not in self._pending_updates:
+            # Get current status as base
+            status = self.data.get(device_id) if self.data else None
+            if status is None:
+                _LOGGER.error("No status available for device %s", device_id)
+                return
+            
+            self._pending_updates[device_id] = {
+                "bodySetting": status.bodySetting,
+                "feetSetting": status.feetSetting,
+                "timespan": timespan if timespan is not None else (status.timer if status.timer > 0 else 3600),
+                "id": device_id,
+            }
+        
+        # Update with new values (only if provided)
+        if body_setting is not None:
+            self._pending_updates[device_id]["bodySetting"] = body_setting
+        if feet_setting is not None:
+            self._pending_updates[device_id]["feetSetting"] = feet_setting
+        if timespan is not None:
+            self._pending_updates[device_id]["timespan"] = timespan
+        
+        # Cancel existing debounce task if any
+        if device_id in self._debounce_tasks:
+            self._debounce_tasks[device_id].cancel()
+        
+        # Schedule the actual API call after debounce delay
+        self._debounce_tasks[device_id] = self.hass.async_create_task(
+            self._async_apply_pending_update(device_id)
+        )
+
+    async def _async_apply_pending_update(self, device_id: str) -> None:
+        """Apply pending updates after debounce delay."""
+        # Wait for debounce delay to collect any additional updates
+        await asyncio.sleep(DEBOUNCE_DELAY)
+        
+        # Get and clear pending updates
+        pending = self._pending_updates.pop(device_id, None)
+        self._debounce_tasks.pop(device_id, None)
+        
+        if pending is None:
+            return
+        
+        try:
+            # Create quickstart command with all pending values
+            qs = beurer_cosynight.Quickstart(
+                bodySetting=pending["bodySetting"],
+                feetSetting=pending["feetSetting"],
+                id=pending["id"],
+                timespan=pending["timespan"],
+            )
+            
+            _LOGGER.debug(
+                "Sending batched update for device %s: body=%d, feet=%d, timespan=%d",
+                device_id,
+                pending["bodySetting"],
+                pending["feetSetting"],
+                pending["timespan"],
+            )
+            
+            # Send the quickstart command
+            await self.hass.async_add_executor_job(self.hub.quickstart, qs)
+            
+            # Notify that a command was sent
+            self.notify_command_sent()
+            
+        except Exception as e:
+            _LOGGER.error("Failed to apply batched update for device %s: %s", device_id, e)
+            raise
