@@ -30,6 +30,9 @@ _LOGGER = logging.getLogger(__name__)
 # Debounce delay to batch simultaneous zone updates (in seconds)
 DEBOUNCE_DELAY = 0.1
 
+# Default timer duration in seconds (1 hour) when no timer is set
+DEFAULT_TIMESPAN_SECONDS = 3600
+
 
 class BeurerCoordinator(DataUpdateCoordinator):
     """Class to manage fetching Beurer CosyNight data."""
@@ -242,7 +245,7 @@ class BeurerCoordinator(DataUpdateCoordinator):
             self._pending_updates[device_id] = {
                 "bodySetting": status.bodySetting,
                 "feetSetting": status.feetSetting,
-                "timespan": timespan if timespan is not None else (status.timer if status.timer > 0 else 3600),
+                "timespan": timespan if timespan is not None else (status.timer if status.timer > 0 else DEFAULT_TIMESPAN_SECONDS),
                 "id": device_id,
             }
         
@@ -256,7 +259,10 @@ class BeurerCoordinator(DataUpdateCoordinator):
         
         # Cancel existing debounce task if any
         if device_id in self._debounce_tasks:
-            self._debounce_tasks[device_id].cancel()
+            try:
+                self._debounce_tasks[device_id].cancel()
+            except Exception:
+                pass  # Task may already be completed or cancelled
         
         # Schedule the actual API call after debounce delay
         self._debounce_tasks[device_id] = self.hass.async_create_task(
@@ -265,8 +271,12 @@ class BeurerCoordinator(DataUpdateCoordinator):
 
     async def _async_apply_pending_update(self, device_id: str) -> None:
         """Apply pending updates after debounce delay."""
-        # Wait for debounce delay to collect any additional updates
-        await asyncio.sleep(DEBOUNCE_DELAY)
+        try:
+            # Wait for debounce delay to collect any additional updates
+            await asyncio.sleep(DEBOUNCE_DELAY)
+        except asyncio.CancelledError:
+            # Task was cancelled, likely due to a new update coming in
+            return
         
         # Get and clear pending updates
         pending = self._pending_updates.pop(device_id, None)
