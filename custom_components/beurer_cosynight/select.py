@@ -154,13 +154,13 @@ class BodyZone(_Zone):
         
         # Get duration from timer entity if available (timer is now in hours)
         timer_hours = self._get_timer_value()
-        timespan = int(timer_hours * 3600)  # Convert hours to seconds
+        timer_minutes = int(timer_hours * 60)  # Convert hours to minutes
         
         # Use coordinator's batched update method to handle simultaneous zone updates
         await self.coordinator.async_set_zone(
             device_id=self._device.id,
             body_setting=int(option),
-            timespan=timespan,
+            timer=timer_minutes,
         )
 
 
@@ -184,11 +184,11 @@ class FeetZone(_Zone):
         
         # Get duration from timer entity if available (timer is now in hours)
         timer_hours = self._get_timer_value()
-        timespan = int(timer_hours * 3600)  # Convert hours to seconds
+        timer_minutes = int(timer_hours * 60)  # Convert hours to minutes
         
         # Use coordinator's batched update method to handle simultaneous zone updates
         await self.coordinator.async_set_zone(
             device_id=self._device.id,
             feet_setting=int(option),
-            timespan=timespan,
+            timer=timer_minutes,
         )

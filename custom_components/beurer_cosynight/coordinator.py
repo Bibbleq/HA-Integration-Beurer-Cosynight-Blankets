@@ -30,8 +30,8 @@ _LOGGER = logging.getLogger(__name__)
 # Debounce delay to batch simultaneous zone updates (in seconds)
 DEBOUNCE_DELAY = 0.1
 
-# Default timer duration in seconds (1 hour) when no timer is set
-DEFAULT_TIMESPAN_SECONDS = 3600
+# Default timer duration in minutes (1 hour = 60 minutes) when no timer is set
+DEFAULT_TIMER_MINUTES = 60
 
 
 class BeurerCoordinator(DataUpdateCoordinator):
@@ -53,7 +53,7 @@ class BeurerCoordinator(DataUpdateCoordinator):
         self._last_command_time = None
         self._active_polling_enabled = False
         
-        # Pending zone updates for batching (device_id -> {bodySetting, feetSetting, timespan})
+        # Pending zone updates for batching (device_id -> {bodySetting, feetSetting, timer})
         self._pending_updates: dict[str, dict[str, Any]] = {}
         self._debounce_tasks: dict[str, asyncio.Task] = {}
         
@@ -220,7 +220,7 @@ class BeurerCoordinator(DataUpdateCoordinator):
         device_id: str,
         body_setting: int | None = None,
         feet_setting: int | None = None,
-        timespan: int | None = None,
+        timer: int | None = None,
     ) -> None:
         """Set zone settings with batching to handle simultaneous updates.
         
@@ -232,7 +232,7 @@ class BeurerCoordinator(DataUpdateCoordinator):
             device_id: The device ID to update
             body_setting: Optional body zone setting (0-9)
             feet_setting: Optional feet zone setting (0-9)
-            timespan: Optional timer duration in seconds
+            timer: Optional timer duration in minutes
         """
         # Initialize pending updates for this device if needed
         if device_id not in self._pending_updates:
@@ -245,7 +245,7 @@ class BeurerCoordinator(DataUpdateCoordinator):
             self._pending_updates[device_id] = {
                 "bodySetting": status.bodySetting,
                 "feetSetting": status.feetSetting,
-                "timespan": timespan if timespan is not None else (status.timer if status.timer > 0 else DEFAULT_TIMESPAN_SECONDS),
+                "timer": timer if timer is not None else (status.timer if status.timer > 0 else DEFAULT_TIMER_MINUTES),
                 "id": device_id,
             }
         
@@ -254,8 +254,8 @@ class BeurerCoordinator(DataUpdateCoordinator):
             self._pending_updates[device_id]["bodySetting"] = body_setting
         if feet_setting is not None:
             self._pending_updates[device_id]["feetSetting"] = feet_setting
-        if timespan is not None:
-            self._pending_updates[device_id]["timespan"] = timespan
+        if timer is not None:
+            self._pending_updates[device_id]["timer"] = timer
         
         # Cancel existing debounce task if any
         if device_id in self._debounce_tasks:
@@ -291,15 +291,15 @@ class BeurerCoordinator(DataUpdateCoordinator):
                 bodySetting=pending["bodySetting"],
                 feetSetting=pending["feetSetting"],
                 id=pending["id"],
-                timespan=pending["timespan"],
+                timer=pending["timer"],
             )
             
             _LOGGER.debug(
-                "Sending batched update for device %s: body=%d, feet=%d, timespan=%d",
+                "Sending batched update for device %s: body=%d, feet=%d, timer=%d",
                 device_id,
                 pending["bodySetting"],
                 pending["feetSetting"],
-                pending["timespan"],
+                pending["timer"],
             )
             
             # Send the quickstart command

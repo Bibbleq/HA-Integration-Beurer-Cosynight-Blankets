@@ -24,7 +24,7 @@ class Quickstart:
     bodySetting: int
     feetSetting: int
     id: str
-    timespan: int  # Seconds
+    timer: int  # Minutes (30-720, API expects minutes not seconds)
 
 
 @dataclasses.dataclass
