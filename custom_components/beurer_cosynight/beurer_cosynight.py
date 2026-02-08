@@ -146,11 +146,30 @@ class BeurerCosyNight:
         if self._token is None:
             raise self.Error('Not authenticated')
         
+        # Log request details with sensitive data masking
+        safe_json = None
+        safe_data = None
+        if 'json' in kwargs:
+            safe_json = {k: '***' if k in ('password', 'refresh_token') else v 
+                        for k, v in kwargs['json'].items()}
+        if 'data' in kwargs:
+            safe_data = {k: '***' if k in ('password', 'refresh_token') else v 
+                        for k, v in kwargs['data'].items()}
+        
+        _LOGGER.debug("Making %s request to %s", method, url)
+        if safe_json:
+            _LOGGER.debug("Request JSON payload: %s", safe_json)
+        if safe_data:
+            _LOGGER.debug("Request form data: %s", safe_data)
+        
         # Add authentication to the request
         kwargs['auth'] = _TokenAuth(self._token)
         
         # Make initial request
         r = requests.request(method, url, **kwargs)
+        
+        # Log response status
+        _LOGGER.debug("Response status: %s", r.status_code)
         
         # If we get a 401, try to recover
         if r.status_code == 401:
@@ -167,12 +186,17 @@ class BeurerCosyNight:
                                           'grant_type': 'refresh_token',
                                           'refresh_token': self._token.refresh_token 
                                       })
+                    _LOGGER.debug("Token refresh response status: %s", refresh_response.status_code)
                     if refresh_response.status_code == requests.codes.ok:
                         self._update_token(refresh_response)
+                        _LOGGER.info("Token refresh successful")
                         # Retry original request with new token
                         kwargs['auth'] = _TokenAuth(self._token)
                         r = requests.request(method, url, **kwargs)
+                        _LOGGER.debug("Retry request response status: %s", r.status_code)
                         return r
+                    else:
+                        _LOGGER.error("Token refresh failed with status %s", refresh_response.status_code)
             except Exception as e:
                 _LOGGER.debug("Token refresh failed: %s", e)
             
@@ -181,18 +205,33 @@ class BeurerCosyNight:
                 _LOGGER.debug("Attempting full re-authentication...")
                 try:
                     self._do_authenticate(self._username, self._password)
+                    _LOGGER.info("Re-authentication successful")
                     # Retry original request with new token
                     kwargs['auth'] = _TokenAuth(self._token)
                     r = requests.request(method, url, **kwargs)
+                    _LOGGER.debug("Retry request after re-auth response status: %s", r.status_code)
                     return r
                 except Exception as e:
                     _LOGGER.error("Re-authentication failed: %s", e)
             
             # If we couldn't recover, clear token and raise
             self._token = None
+            _LOGGER.error("Authentication failed: %s %s for url: %s", r.status_code, r.reason, r.url)
+            try:
+                _LOGGER.error("Response body: %s", r.text)
+            except:
+                pass
             raise self.AuthenticationError(
                 f"Authentication failed: {r.status_code} {r.reason} for url: {r.url}"
             )
+        
+        # Log response body on non-2xx status codes
+        if not r.ok:
+            _LOGGER.error("Request failed with status %s: %s", r.status_code, r.reason)
+            try:
+                _LOGGER.error("Response body: %s", r.text)
+            except:
+                pass
         
         return r
 
@@ -205,7 +244,13 @@ class BeurerCosyNight:
                               'username': username,
                               'password': password
                           })
+        _LOGGER.debug("Authentication response status: %s", r.status_code)
         if r.status_code == 401:
+            _LOGGER.error("Authentication failed: invalid username or password")
+            try:
+                _LOGGER.error("Response body: %s", r.text)
+            except:
+                pass
             raise self.AuthenticationError(
                 "Authentication failed: invalid username or password"
             )
@@ -228,6 +273,7 @@ class BeurerCosyNight:
                           json={'id': id})
         r.raise_for_status()
         body = r.json()
+        _LOGGER.debug("Device status response: %s", body)
         body['requiresUpdate'] = body.pop('requieresUpdate')
         return Status(**body)
  
@@ -235,7 +281,9 @@ class BeurerCosyNight:
         _LOGGER.debug('Listing devices...')
         r = self._make_authenticated_request('GET', _BASE_URL + '/api/v1/Device/List')
         r.raise_for_status()
-        devices = r.json().get('devices', [])
+        body = r.json()
+        _LOGGER.debug("List devices response: %s", body)
+        devices = body.get('devices', [])
         _LOGGER.info('Found %d device(s)', len(devices))
         ds = []
         for d in devices:
@@ -245,7 +293,16 @@ class BeurerCosyNight:
  
     def quickstart(self, quickstart):
         _LOGGER.debug('Quick starting device...')
-        r = self._make_authenticated_request('POST', _BASE_URL + '/api/v1/Device/Quickstart',
-                          json=dataclasses.asdict(quickstart))
-        r.raise_for_status()
+        _LOGGER.debug('Quickstart object: %s', quickstart)
+        quickstart_dict = dataclasses.asdict(quickstart)
+        _LOGGER.debug('Quickstart dict representation: %s', quickstart_dict)
+        _LOGGER.debug('Quickstart JSON payload: %s', json.dumps(quickstart_dict))
+        try:
+            r = self._make_authenticated_request('POST', _BASE_URL + '/api/v1/Device/Quickstart',
+                              json=quickstart_dict)
+            r.raise_for_status()
+            _LOGGER.info('Quickstart successful for device %s', quickstart.id)
+        except Exception as e:
+            _LOGGER.error('Quickstart failed for device %s: %s', quickstart.id, e)
+            raise
 
