@@ -8,6 +8,7 @@ from .const import DOMAIN
 import voluptuous as vol
 
 import homeassistant.helpers.config_validation as cv
+from homeassistant.components.number import NumberEntity
 from homeassistant.components.select import (PLATFORM_SCHEMA, SelectEntity)
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
@@ -119,8 +120,9 @@ class _Zone(CoordinatorEntity, SelectEntity):
             entities_key = f"{self._config_entry_id}_entities"
             device_entities = self._hass.data.get(DOMAIN, {}).get(entities_key, {}).get(self._device.id, [])
             for entity in device_entities:
-                # Look for the DurationTimer entity by checking unique_id
-                if hasattr(entity, '_attr_unique_id') and '_timer' in entity._attr_unique_id:
+                # Look for the DurationTimer (NumberEntity) specifically,
+                # not the DeviceTimer sensor which also has '_timer' in its unique_id
+                if isinstance(entity, NumberEntity) and hasattr(entity, '_attr_unique_id') and '_timer' in entity._attr_unique_id:
                     value = entity.native_value
                     # Ensure we have a valid numeric timer value (must be positive)
                     if isinstance(value, (int, float)) and value > 0:
