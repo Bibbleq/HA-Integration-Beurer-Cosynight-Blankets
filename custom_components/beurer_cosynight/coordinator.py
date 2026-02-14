@@ -92,6 +92,27 @@ class BeurerCoordinator(DataUpdateCoordinator):
             update_interval=initial_interval,
         )
 
+    def _is_optimistic_state_fresh(self, device_id: str) -> bool:
+        """Check if optimistic state exists and is still fresh."""
+        opt = self._optimistic_state.get(device_id)
+        if not opt:
+            return False
+        age = (dt_util.now() - opt["timestamp"]).total_seconds()
+        return age < OPTIMISTIC_TTL
+
+    def _create_status_with_overrides(self, base_status, **overrides):
+        """Create a new Status object with specific field overrides."""
+        return beurer_cosynight.Status(
+            active=overrides.get("active", base_status.active),
+            bodySetting=overrides.get("bodySetting", base_status.bodySetting),
+            feetSetting=overrides.get("feetSetting", base_status.feetSetting),
+            heartbeat=overrides.get("heartbeat", base_status.heartbeat),
+            id=overrides.get("id", base_status.id),
+            name=overrides.get("name", base_status.name),
+            requiresUpdate=overrides.get("requiresUpdate", base_status.requiresUpdate),
+            timer=overrides.get("timer", base_status.timer),
+        )
+
     def _parse_time(self, time_str: str) -> time:
         """Parse time string in HH:MM format."""
         try:
@@ -195,28 +216,24 @@ class BeurerCoordinator(DataUpdateCoordinator):
                 opt = self._optimistic_state.get(device.id)
                 if opt:
                     age = (dt_util.now() - opt["timestamp"]).total_seconds()
-                    if age < OPTIMISTIC_TTL:
-                        # Server hasn't caught up yet — preserve commanded values
-                        if status.bodySetting != opt["bodySetting"] or status.feetSetting != opt["feetSetting"]:
-                            _LOGGER.debug(
-                                "Server data stale (age=%.1fs), preserving optimistic state for %s",
-                                age, device.id,
-                            )
-                            data[device.id] = beurer_cosynight.Status(
-                                active=status.active,
-                                bodySetting=opt["bodySetting"],
-                                feetSetting=opt["feetSetting"],
-                                heartbeat=status.heartbeat,
-                                id=status.id,
-                                name=status.name,
-                                requiresUpdate=status.requiresUpdate,
-                                timer=status.timer,
-                            )
-                        else:
-                            # Server caught up — clear optimistic state
-                            del self._optimistic_state[device.id]
-                    else:
+                    if age >= OPTIMISTIC_TTL:
                         # TTL expired — trust server, clear cache
+                        _LOGGER.debug("Optimistic TTL expired for %s, clearing cache", device.id)
+                        del self._optimistic_state[device.id]
+                    elif status.bodySetting != opt["bodySetting"] or status.feetSetting != opt["feetSetting"]:
+                        # Server hasn't caught up yet — preserve commanded values
+                        _LOGGER.debug(
+                            "Server data stale (age=%.1fs), preserving optimistic state for %s",
+                            age, device.id,
+                        )
+                        data[device.id] = self._create_status_with_overrides(
+                            status,
+                            bodySetting=opt["bodySetting"],
+                            feetSetting=opt["feetSetting"],
+                        )
+                    else:
+                        # Server caught up — clear optimistic state
+                        _LOGGER.debug("Server caught up for %s, clearing cache", device.id)
                         del self._optimistic_state[device.id]
             except Exception as err:
                 _LOGGER.error(
@@ -272,8 +289,8 @@ class BeurerCoordinator(DataUpdateCoordinator):
         # Initialize pending updates for this device if needed
         if device_id not in self._pending_updates:
             # Prefer optimistic state over server data as baseline
-            opt = self._optimistic_state.get(device_id)
-            if opt and (dt_util.now() - opt["timestamp"]).total_seconds() < OPTIMISTIC_TTL:
+            if self._is_optimistic_state_fresh(device_id):
+                opt = self._optimistic_state[device_id]
                 base_body = opt["bodySetting"]
                 base_feet = opt["feetSetting"]
                 base_timespan = opt["timespan"]
@@ -360,14 +377,10 @@ class BeurerCoordinator(DataUpdateCoordinator):
             # Optimistically update coordinator data so HA UI reflects changes immediately
             if self.data and device_id in self.data:
                 current_status = self.data[device_id]
-                self.data[device_id] = beurer_cosynight.Status(
-                    active=current_status.active,
+                self.data[device_id] = self._create_status_with_overrides(
+                    current_status,
                     bodySetting=pending["bodySetting"],
                     feetSetting=pending["feetSetting"],
-                    heartbeat=current_status.heartbeat,
-                    id=current_status.id,
-                    name=current_status.name,
-                    requiresUpdate=current_status.requiresUpdate,
                     timer=pending["timespan"],
                 )
                 self.async_set_updated_data(self.data)
