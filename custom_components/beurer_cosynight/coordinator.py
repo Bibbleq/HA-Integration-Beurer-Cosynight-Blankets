@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 from datetime import time, timedelta
 from typing import Any
@@ -101,16 +102,20 @@ class BeurerCoordinator(DataUpdateCoordinator):
         return age < OPTIMISTIC_TTL
 
     def _create_status_with_overrides(self, base_status, **overrides):
-        """Create a new Status object with specific field overrides."""
-        return beurer_cosynight.Status(
-            active=overrides.get("active", base_status.active),
-            bodySetting=overrides.get("bodySetting", base_status.bodySetting),
-            feetSetting=overrides.get("feetSetting", base_status.feetSetting),
-            heartbeat=overrides.get("heartbeat", base_status.heartbeat),
-            id=overrides.get("id", base_status.id),
-            name=overrides.get("name", base_status.name),
-            requiresUpdate=overrides.get("requiresUpdate", base_status.requiresUpdate),
-            timer=overrides.get("timer", base_status.timer),
+        """Create a new Status object with specific field overrides.
+        
+        Uses dataclasses.replace to ensure all fields are properly copied.
+        """
+        return dataclasses.replace(base_status, **overrides)
+
+    def _has_server_caught_up(self, device_id: str, server_status) -> bool:
+        """Check if server data matches the optimistic state."""
+        opt = self._optimistic_state.get(device_id)
+        if not opt:
+            return True  # No optimistic state to compare
+        return (
+            server_status.bodySetting == opt["bodySetting"]
+            and server_status.feetSetting == opt["feetSetting"]
         )
 
     def _parse_time(self, time_str: str) -> time:
@@ -215,13 +220,13 @@ class BeurerCoordinator(DataUpdateCoordinator):
                 # Freshness guard: if we have recent optimistic state, check if server caught up
                 opt = self._optimistic_state.get(device.id)
                 if opt:
-                    age = (dt_util.now() - opt["timestamp"]).total_seconds()
-                    if age >= OPTIMISTIC_TTL:
+                    if not self._is_optimistic_state_fresh(device.id):
                         # TTL expired — trust server, clear cache
                         _LOGGER.debug("Optimistic TTL expired for %s, clearing cache", device.id)
                         del self._optimistic_state[device.id]
-                    elif status.bodySetting != opt["bodySetting"] or status.feetSetting != opt["feetSetting"]:
+                    elif not self._has_server_caught_up(device.id, status):
                         # Server hasn't caught up yet — preserve commanded values
+                        age = (dt_util.now() - opt["timestamp"]).total_seconds()
                         _LOGGER.debug(
                             "Server data stale (age=%.1fs), preserving optimistic state for %s",
                             age, device.id,
