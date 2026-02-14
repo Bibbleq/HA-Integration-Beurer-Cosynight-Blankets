@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 from datetime import time, timedelta
 from typing import Any
@@ -33,6 +34,9 @@ DEBOUNCE_DELAY = 0.1
 # Default timer duration in seconds (1 hour = 3600 seconds) when no timer is set
 DEFAULT_TIMER_SECONDS = 3600
 
+# How long to trust optimistic state over server polls (seconds)
+OPTIMISTIC_TTL = 30
+
 
 class BeurerCoordinator(DataUpdateCoordinator):
     """Class to manage fetching Beurer CosyNight data."""
@@ -56,6 +60,10 @@ class BeurerCoordinator(DataUpdateCoordinator):
         # Pending zone updates for batching (device_id -> {bodySetting, feetSetting, timespan})
         self._pending_updates: dict[str, dict[str, Any]] = {}
         self._debounce_tasks: dict[str, asyncio.Task] = {}
+        
+        # Optimistic state: what we last commanded per device
+        # device_id -> {"bodySetting": int, "feetSetting": int, "timespan": int, "timestamp": datetime}
+        self._optimistic_state: dict[str, dict[str, Any]] = {}
         
         # Get configuration options with defaults
         options = config_entry.options if config_entry.options else {}
@@ -83,6 +91,31 @@ class BeurerCoordinator(DataUpdateCoordinator):
             _LOGGER,
             name=DOMAIN,
             update_interval=initial_interval,
+        )
+
+    def _is_optimistic_state_fresh(self, device_id: str) -> bool:
+        """Check if optimistic state exists and is still fresh."""
+        opt = self._optimistic_state.get(device_id)
+        if not opt:
+            return False
+        age = (dt_util.now() - opt["timestamp"]).total_seconds()
+        return age < OPTIMISTIC_TTL
+
+    def _create_status_with_overrides(self, base_status, **overrides):
+        """Create a new Status object with specific field overrides.
+        
+        Uses dataclasses.replace to ensure all fields are properly copied.
+        """
+        return dataclasses.replace(base_status, **overrides)
+
+    def _has_server_caught_up(self, device_id: str, server_status) -> bool:
+        """Check if server data matches the optimistic state."""
+        opt = self._optimistic_state.get(device_id)
+        if not opt:
+            return True  # No optimistic state to compare
+        return (
+            server_status.bodySetting == opt["bodySetting"]
+            and server_status.feetSetting == opt["feetSetting"]
         )
 
     def _parse_time(self, time_str: str) -> time:
@@ -183,6 +216,30 @@ class BeurerCoordinator(DataUpdateCoordinator):
                     self.hub.get_status, device.id
                 )
                 data[device.id] = status
+                
+                # Freshness guard: if we have recent optimistic state, check if server caught up
+                opt = self._optimistic_state.get(device.id)
+                if opt:
+                    if not self._is_optimistic_state_fresh(device.id):
+                        # TTL expired — trust server, clear cache
+                        _LOGGER.debug("Optimistic TTL expired for %s, clearing cache", device.id)
+                        del self._optimistic_state[device.id]
+                    elif not self._has_server_caught_up(device.id, status):
+                        # Server hasn't caught up yet — preserve commanded values
+                        age = (dt_util.now() - opt["timestamp"]).total_seconds()
+                        _LOGGER.debug(
+                            "Server data stale (age=%.1fs), preserving optimistic state for %s",
+                            age, device.id,
+                        )
+                        data[device.id] = self._create_status_with_overrides(
+                            status,
+                            bodySetting=opt["bodySetting"],
+                            feetSetting=opt["feetSetting"],
+                        )
+                    else:
+                        # Server caught up — clear optimistic state
+                        _LOGGER.debug("Server caught up for %s, clearing cache", device.id)
+                        del self._optimistic_state[device.id]
             except Exception as err:
                 _LOGGER.error(
                     "Error fetching data for device %s: %s",
@@ -236,16 +293,25 @@ class BeurerCoordinator(DataUpdateCoordinator):
         """
         # Initialize pending updates for this device if needed
         if device_id not in self._pending_updates:
-            # Get current status as base
-            status = self.data.get(device_id) if self.data else None
-            if status is None:
-                _LOGGER.error("No status available for device %s", device_id)
-                return
-            
+            # Prefer optimistic state over server data as baseline
+            if self._is_optimistic_state_fresh(device_id):
+                opt = self._optimistic_state[device_id]
+                base_body = opt["bodySetting"]
+                base_feet = opt["feetSetting"]
+                base_timespan = opt["timespan"]
+            else:
+                status = self.data.get(device_id) if self.data else None
+                if status is None:
+                    _LOGGER.error("No status available for device %s", device_id)
+                    return
+                base_body = status.bodySetting
+                base_feet = status.feetSetting
+                base_timespan = status.timer if status.timer > 0 else DEFAULT_TIMER_SECONDS
+
             self._pending_updates[device_id] = {
-                "bodySetting": status.bodySetting,
-                "feetSetting": status.feetSetting,
-                "timespan": timespan if timespan is not None else (status.timer if status.timer > 0 else DEFAULT_TIMER_SECONDS),
+                "bodySetting": base_body,
+                "feetSetting": base_feet,
+                "timespan": timespan if timespan is not None else base_timespan,
                 "id": device_id,
             }
         
@@ -304,6 +370,25 @@ class BeurerCoordinator(DataUpdateCoordinator):
             
             # Send the quickstart command
             await self.hass.async_add_executor_job(self.hub.quickstart, qs)
+            
+            # Cache optimistic state so future commands and polls use our commanded values
+            self._optimistic_state[device_id] = {
+                "bodySetting": pending["bodySetting"],
+                "feetSetting": pending["feetSetting"],
+                "timespan": pending["timespan"],
+                "timestamp": dt_util.now(),
+            }
+            
+            # Optimistically update coordinator data so HA UI reflects changes immediately
+            if self.data and device_id in self.data:
+                current_status = self.data[device_id]
+                self.data[device_id] = self._create_status_with_overrides(
+                    current_status,
+                    bodySetting=pending["bodySetting"],
+                    feetSetting=pending["feetSetting"],
+                    timer=pending["timespan"],
+                )
+                self.async_set_updated_data(self.data)
             
             # Notify that a command was sent
             self.notify_command_sent()
