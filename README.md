@@ -70,7 +70,6 @@ This dramatically reduces API calls from every 30 seconds to much longer interva
 This integration includes an advanced dashboard card example featuring Mushroom cards with heat-level color coding (blue to red gradient for zones 0-9), active/off status indicators, duration controls with +/- buttons, and last-refreshed timestamps. The example shows a two-blanket side-by-side layout.
 
 ![Dashboard Card Example](images/dashboard-card-example.png)
-*Note: Screenshot to be added*
 
 ### Required Custom Cards
 
