@@ -67,7 +67,26 @@ This dramatically reduces API calls from every 30 seconds to much longer interva
 
 ## Example Lovelace Card
 
-See [beurer-card-example.yaml](beurer-card-example.yaml) for an example Lovelace card configuration.
+This integration includes an advanced dashboard card example featuring Mushroom cards with heat-level color coding (blue to red gradient for zones 0-9), active/off status indicators, duration controls with +/- buttons, and last-refreshed timestamps. The example shows a two-blanket side-by-side layout.
+
+![Dashboard Card Example](images/dashboard-card-example.png)
+*Note: Screenshot to be added*
+
+### Required Custom Cards
+
+Before using this card, install these custom integrations from HACS (Frontend):
+
+- [Mushroom Cards](https://github.com/piitaya/lovelace-mushroom) - Beautiful, modern card designs
+- [card-mod](https://github.com/thomasloven/lovelace-card-mod) - CSS styling for cards
+- [Vertical Stack In Card](https://github.com/ofekashery/vertical-stack-in-card) - Group cards without gaps
+
+### Usage
+
+1. Install the required custom cards listed above via HACS
+2. View the full card configuration in [beurer-card-example.yaml](beurer-card-example.yaml)
+3. **Important**: Replace the entity names in the example (e.g., `sensor.bens_blanket_remaining_time`) with your own entity names. Find them in **Settings > Devices & Services > Beurer CosyNight**
+4. If you have only one blanket, use just one of the two card columns from the example
+5. Add the card to your dashboard in YAML mode
 
 ## Credits & Attribution
 
