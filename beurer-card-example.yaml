@@ -35,6 +35,7 @@ cards:
           {{ 'deep-orange' if states(entity) not in ['Off', 'unavailable',
           'unknown', '0'] else 'blue-grey' }}
         features_position: bottom
+        # Icon tap stops the blanket, card tap shows more info
         icon_tap_action:
           action: perform-action
           perform_action: button.press
@@ -119,12 +120,10 @@ cards:
           not in ['Off', 'unavailable', 'unknown', '0'] else '❄️ Off' }}
         icon: mdi:bed
         tap_action:
-          action: call-service
-          service: button.press
-          service_data:
+          action: perform-action
+          perform_action: button.press
+          target:
             entity_id: button.jens_blanket_stop
-          confirmation:
-            text: Stop Jen's blanket?
         color: >-
           {{ 'deep-orange' if states(entity) not in ['Off', 'unavailable',
           'unknown', '0'] else 'blue-grey' }}
@@ -189,5 +188,5 @@ cards:
             mushroom-shape-icon { display: none; }
     grid_options:
       columns: 6
-      rows: 1
+      rows: auto
 column_span: 1

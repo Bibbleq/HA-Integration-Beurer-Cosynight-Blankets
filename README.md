@@ -75,9 +75,9 @@ This integration includes an advanced dashboard card example featuring Mushroom 
 
 Before using this card, install these custom integrations from HACS (Frontend):
 
-- <a href="https://github.com/piitaya/lovelace-mushroom">Mushroom Cards</a> - Beautiful, modern card designs
-- <a href="https://github.com/thomasloven/lovelace-card-mod">card-mod</a> - CSS styling for cards
-- <a href="https://github.com/ofekashery/vertical-stack-in-card">Vertical Stack In Card</a> - Group cards without gaps
+- [Mushroom Cards](https://github.com/piitaya/lovelace-mushroom) - Beautiful, modern card designs
+- [card-mod](https://github.com/thomasloven/lovelace-card-mod) - CSS styling for cards
+- [Vertical Stack In Card](https://github.com/ofekashery/vertical-stack-in-card) - Group cards without gaps
 
 ### Usage
 
