@@ -1,48 +1,193 @@
-# Beurer CosyNight Card Configuration
-# Add this to your Home Assistant dashboard
+# Beurer CosyNight Advanced Dashboard Card
+#
+# This is an advanced example using Mushroom cards with heat-level color coding,
+# active/off status indicators, and last-refreshed timestamps.
+#
+# PREREQUISITES:
+# You must install these custom cards from HACS (Frontend):
+#   1. Mushroom Cards (lovelace-mushroom) - https://github.com/piitaya/lovelace-mushroom
+#   2. card-mod (lovelace-card-mod) - https://github.com/thomasloven/lovelace-card-mod
+#   3. Vertical Stack In Card - https://github.com/ofekashery/vertical-stack-in-card
+#
+# IMPORTANT - REPLACE ENTITY NAMES:
+# This example uses entity names like "sensor.bens_blanket_remaining_time" and
+# "select.jens_blanket_body_zone". You MUST replace these with your own entity names.
+# Find your entity names in: Settings > Devices & Services > Beurer CosyNight
+#
+# LAYOUT:
+# This example shows a two-blanket setup with side-by-side columns.
+# If you have only one blanket, simply use one of the two columns below.
+#
+# Add this card to your Home Assistant dashboard in YAML mode.
 
-type: vertical-stack
+type: grid
 cards:
-  - type: heading
-    heading: Beurer CosyNight Bed
-    heading_style: title
-
-  - type: horizontal-stack
+  - type: custom:vertical-stack-in-card
     cards:
-      - type: custom:button-card
-        entity: select.morgan_s_side_body_zone
-        name: Body Zone
-        state:
-          - value: 'off'
-            color: rgb(230, 230, 230)
-          - operator: default
-            color: rgb(66, 134, 244)
+      - type: custom:mushroom-template-card
+        entity: sensor.bens_blanket_remaining_time
+        primary: Ben's Blanket
+        secondary: >-
+          {{ '🔥 Active — ' + states(entity) + ' remaining' if states(entity)
+          not in ['Off', 'unavailable', 'unknown', '0'] else '❄️ Off' }}
+        icon: mdi:bed
+        color: >-
+          {{ 'deep-orange' if states(entity) not in ['Off', 'unavailable',
+          'unknown', '0'] else 'blue-grey' }}
+        features_position: bottom
+        icon_tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.bens_blanket_stop
         tap_action:
           action: more-info
-        show_state: true
-        size: 30%
-
-      - type: custom:button-card
-        entity: select.morgan_s_side_feet_zone
-        name: Feet Zone
-        state:
-          - value: 'off'
-            color: rgb(230, 230, 230)
-          - operator: default
-            color: rgb(66, 134, 244)
+        card_mod:
+          style: >-
+            ha-card { --card-primary-font-size: 18px;
+            --card-secondary-font-size: 14px; }
+      - type: vertical-stack
+        cards:
+          - type: custom:mushroom-select-card
+            entity: select.bens_blanket_body_zone
+            name: Body
+            icon: mdi:human
+            fill_container: false
+            layout: horizontal
+            card_mod:
+              style: >-
+                mushroom-shape-icon { --icon-color: {% set colors =
+                {'0':'#4a90d9','1':'#5a9fd6','2':'#7ab8c4','3':'#a0c99f','4':'#c4d87a','5':'#e8d44d','6':'#f0b030','7':'#f08a20','8':'#e85d1a','9':'#d42a15'}
+                %} {{ colors.get(states(config.entity), '#888') }} !important;
+                --shape-color: {% set colors =
+                {'0':'#4a90d933','1':'#5a9fd633','2':'#7ab8c433','3':'#a0c99f33','4':'#c4d87a33','5':'#e8d44d33','6':'#f0b03033','7':'#f08a2033','8':'#e85d1a33','9':'#d42a1533'}
+                %} {{ colors.get(states(config.entity), '#88888833') }}
+                !important; }
+          - type: custom:mushroom-select-card
+            entity: select.bens_blanket_feet_zone
+            name: Feet
+            icon: mdi:foot-print
+            fill_container: true
+            layout: horizontal
+            card_mod:
+              style: >-
+                mushroom-shape-icon { --icon-color: {% set colors =
+                {'0':'#4a90d9','1':'#5a9fd6','2':'#7ab8c4','3':'#a0c99f','4':'#c4d87a','5':'#e8d44d','6':'#f0b030','7':'#f08a20','8':'#e85d1a','9':'#d42a15'}
+                %} {{ colors.get(states(config.entity), '#888') }} !important;
+                --shape-color: {% set colors =
+                {'0':'#4a90d933','1':'#5a9fd633','2':'#7ab8c433','3':'#a0c99f33','4':'#c4d87a33','5':'#e8d44d33','6':'#f0b03033','7':'#f08a2033','8':'#e85d1a33','9':'#d42a1533'}
+                %} {{ colors.get(states(config.entity), '#88888833') }}
+                !important; }
+      - type: tile
+        entity: number.bens_blanket_duration
+        name: Duration
+        icon: mdi:timer-outline
+        color: amber
+        show_entity_picture: false
+        vertical: false
         tap_action:
-          action: more-info
-        show_state: true
-        size: 30%
-
-  - type: entities
-    title: Zone Controls
-    entities:
-      - entity: select.morgan_s_side_body_zone
-        name: Body Intensity
-      - entity: select.morgan_s_side_feet_zone
-        name: Feet Intensity
-
-# Alternative: Simple card configuration
-# Replace the entity names with your actual entity IDs from Home Assistant
-# You can find them in Settings > Devices & Services > Beurer CosyNight
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.bens_blanket_stop
+        features:
+          - style: buttons
+            type: numeric-input
+        features_position: bottom
+      - type: custom:mushroom-template-card
+        entity: sensor.bens_blanket_last_updated
+        primary: "Last refreshed: {{ relative_time(states(entity) | as_datetime) }} ago"
+        icon: ""
+        tap_action:
+          action: none
+        features_position: bottom
+        card_mod:
+          style: >-
+            ha-card { --card-primary-font-size: 11px; --card-primary-color:
+            var(--secondary-text-color); padding: 0; margin-top: -8px; }
+            mushroom-shape-icon { display: none; }
+    grid_options:
+      columns: 6
+      rows: auto
+  - type: custom:vertical-stack-in-card
+    cards:
+      - type: custom:mushroom-template-card
+        entity: sensor.jens_blanket_remaining_time
+        primary: Jen's Blanket
+        secondary: >-
+          {{ '🔥 Active — ' + states(entity) + ' remaining' if states(entity)
+          not in ['Off', 'unavailable', 'unknown', '0'] else '❄️ Off' }}
+        icon: mdi:bed
+        tap_action:
+          action: call-service
+          service: button.press
+          service_data:
+            entity_id: button.jens_blanket_stop
+          confirmation:
+            text: Stop Jen's blanket?
+        color: >-
+          {{ 'deep-orange' if states(entity) not in ['Off', 'unavailable',
+          'unknown', '0'] else 'blue-grey' }}
+        features_position: bottom
+        card_mod:
+          style: >-
+            ha-card { --card-primary-font-size: 18px;
+            --card-secondary-font-size: 14px; }
+      - type: vertical-stack
+        cards:
+          - type: custom:mushroom-select-card
+            entity: select.jens_blanket_body_zone
+            name: Body
+            icon: mdi:human
+            fill_container: true
+            layout: horizontal
+            card_mod:
+              style: >-
+                mushroom-shape-icon { --icon-color: {% set colors =
+                {'0':'#4a90d9','1':'#5a9fd6','2':'#7ab8c4','3':'#a0c99f','4':'#c4d87a','5':'#e8d44d','6':'#f0b030','7':'#f08a20','8':'#e85d1a','9':'#d42a15'}
+                %} {{ colors.get(states(config.entity), '#888') }} !important;
+                --shape-color: {% set colors =
+                {'0':'#4a90d933','1':'#5a9fd633','2':'#7ab8c433','3':'#a0c99f33','4':'#c4d87a33','5':'#e8d44d33','6':'#f0b03033','7':'#f08a2033','8':'#e85d1a33','9':'#d42a1533'}
+                %} {{ colors.get(states(config.entity), '#88888833') }}
+                !important; }
+          - type: custom:mushroom-select-card
+            entity: select.jens_blanket_feet_zone
+            name: Feet
+            icon: mdi:foot-print
+            fill_container: true
+            layout: horizontal
+            card_mod:
+              style: >-
+                mushroom-shape-icon { --icon-color: {% set colors =
+                {'0':'#4a90d9','1':'#5a9fd6','2':'#7ab8c4','3':'#a0c99f','4':'#c4d87a','5':'#e8d44d','6':'#f0b030','7':'#f08a20','8':'#e85d1a','9':'#d42a15'}
+                %} {{ colors.get(states(config.entity), '#888') }} !important;
+                --shape-color: {% set colors =
+                {'0':'#4a90d933','1':'#5a9fd633','2':'#7ab8c433','3':'#a0c99f33','4':'#c4d87a33','5':'#e8d44d33','6':'#f0b03033','7':'#f08a2033','8':'#e85d1a33','9':'#d42a1533'}
+                %} {{ colors.get(states(config.entity), '#88888833') }}
+                !important; }
+      - type: tile
+        entity: number.jens_blanket_duration
+        name: Duration
+        icon: mdi:timer-outline
+        color: amber
+        vertical: false
+        features:
+          - style: buttons
+            type: numeric-input
+        features_position: bottom
+      - type: custom:mushroom-template-card
+        entity: sensor.jens_blanket_last_updated
+        primary: "Last refreshed: {{ relative_time(states(entity) | as_datetime) }} ago"
+        icon: ""
+        tap_action:
+          action: none
+        features_position: bottom
+        card_mod:
+          style: >-
+            ha-card { --card-primary-font-size: 11px; --card-primary-color:
+            var(--secondary-text-color); padding: 0; margin-top: -8px; }
+            mushroom-shape-icon { display: none; }
+    grid_options:
+      columns: 6
+      rows: 1
+column_span: 1
