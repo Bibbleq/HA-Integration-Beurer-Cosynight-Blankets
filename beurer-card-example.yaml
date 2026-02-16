@@ -53,7 +53,7 @@ cards:
             entity: select.bens_blanket_body_zone
             name: Body
             icon: mdi:human
-            fill_container: false
+            fill_container: true
             layout: horizontal
             card_mod:
               style: >-
@@ -84,7 +84,6 @@ cards:
         name: Duration
         icon: mdi:timer-outline
         color: amber
-        show_entity_picture: false
         vertical: false
         tap_action:
           action: perform-action
@@ -119,15 +118,18 @@ cards:
           {{ '🔥 Active — ' + states(entity) + ' remaining' if states(entity)
           not in ['Off', 'unavailable', 'unknown', '0'] else '❄️ Off' }}
         icon: mdi:bed
-        tap_action:
-          action: perform-action
-          perform_action: button.press
-          target:
-            entity_id: button.jens_blanket_stop
         color: >-
           {{ 'deep-orange' if states(entity) not in ['Off', 'unavailable',
           'unknown', '0'] else 'blue-grey' }}
         features_position: bottom
+        # Icon tap stops the blanket, card tap shows more info
+        icon_tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.jens_blanket_stop
+        tap_action:
+          action: more-info
         card_mod:
           style: >-
             ha-card { --card-primary-font-size: 18px;
